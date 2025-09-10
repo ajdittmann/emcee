@@ -2,12 +2,18 @@
 
 import os
 from itertools import product
+from os.path import join
 
-import h5py
 import numpy as np
 import pytest
 
-from emcee import EnsembleSampler, backends, State
+from emcee import EnsembleSampler, State, backends
+from emcee.backends.hdf import does_hdf5_support_longdouble
+
+try:
+    import h5py
+except ImportError:
+    h5py = None
 
 __all__ = ["test_backend", "test_reload"]
 
@@ -17,7 +23,7 @@ dtypes = [None, [("log_prior", float), ("mean", int)]]
 
 
 def normal_log_prob(params):
-    return -0.5 * np.sum(params ** 2)
+    return -0.5 * np.sum(params**2)
 
 
 def normal_log_prob_blobs(params):
@@ -55,6 +61,7 @@ def _custom_allclose(a, b):
             assert np.allclose(a[n], b[n])
 
 
+@pytest.mark.skipif(h5py is None, reason="HDF5 not available")
 def test_uninit(tmpdir):
     fn = str(tmpdir.join("EMCEE_TEST_FILE_DO_NOT_USE.h5"))
     if os.path.exists(fn):
@@ -208,6 +215,7 @@ def test_restart(backend, dtype):
         assert np.allclose(a, b), "inconsistent acceptance fraction"
 
 
+@pytest.mark.skipif(h5py is None, reason="HDF5 not available")
 def test_multi_hdf5():
     with backends.TempHDFBackend() as backend1:
         run_sampler(backend1)
@@ -227,6 +235,11 @@ def test_multi_hdf5():
 
 @pytest.mark.parametrize("backend", all_backends)
 def test_longdouble_preserved(backend):
+    if (
+        issubclass(backend, backends.TempHDFBackend)
+        and not does_hdf5_support_longdouble()
+    ):
+        pytest.xfail("HDF5 does not support long double on this platform")
     nwalkers = 10
     ndim = 2
     nsteps = 5
@@ -237,12 +250,10 @@ def test_longdouble_preserved(backend):
             coords = np.zeros((nwalkers, ndim), dtype=np.longdouble)
             coords += i + 1
             coords += np.arange(nwalkers)[:, None]
-            coords[:, 1] += coords[:, 0]*2*np.finfo(np.longdouble).eps
+            coords[:, 1] += coords[:, 0] * 2 * np.finfo(np.longdouble).eps
             assert not np.any(coords[:, 1] == coords[:, 0])
-            lp = 1+np.arange(nwalkers)*np.finfo(np.longdouble).eps
-            state = State(coords,
-                          log_prob=lp,
-                          random_state=())
+            lp = 1 + np.arange(nwalkers) * np.finfo(np.longdouble).eps
+            state = State(coords, log_prob=lp, random_state=())
             b.save_step(state, np.ones((nwalkers,), dtype=bool))
             s = b.get_last_sample()
             # check s has adequate precision and equals state
@@ -254,12 +265,12 @@ def test_longdouble_preserved(backend):
             assert np.all(s.log_prob == lp)
 
 
-def test_hdf5_dtypes():
-    nwalkers = 10
-    ndim = 2
-    with backends.TempHDFBackend(dtype=np.longdouble) as b:
-        assert b.dtype == np.longdouble
-        b.reset(nwalkers, ndim)
-        with h5py.File(b.filename, "r") as f:
-            g = f["test"]
-            assert g["chain"].dtype == np.longdouble
+@pytest.mark.skipif(h5py is None, reason="HDF5 not available")
+def test_hdf5_compression():
+    with backends.TempHDFBackend(compression="gzip") as b:
+        run_sampler(b, blobs=True)
+        # re-open and read
+        b.get_chain()
+        b.get_blobs()
+        b.get_log_prob()
+        b.accepted

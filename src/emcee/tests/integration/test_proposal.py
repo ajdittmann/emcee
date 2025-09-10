@@ -1,19 +1,25 @@
 # -*- coding: utf-8 -*-
 
 import numpy as np
-from scipy import stats
+import pytest
 
 import emcee
+
+try:
+    from scipy import stats
+except ImportError:
+    stats = None
+
 
 __all__ = ["_test_normal", "_test_uniform"]
 
 
 def normal_log_prob_blobs(params):
-    return -0.5 * np.sum(params ** 2), params
+    return -0.5 * np.sum(params**2), params
 
 
 def normal_log_prob(params):
-    return -0.5 * np.sum(params ** 2)
+    return -0.5 * np.sum(params**2)
 
 
 def uniform_log_prob(params):
@@ -65,7 +71,7 @@ def _test_normal(
     assert np.all(np.abs(mu) < 0.08), "Incorrect mean"
     assert np.all(np.abs(sig - 1) < 0.05), "Incorrect standard deviation"
 
-    if ndim == 1:
+    if ndim == 1 and stats is not None:
         ks, _ = stats.kstest(samps[:, 0], "norm")
         assert ks < 0.05, "The K-S test failed"
 
@@ -88,8 +94,9 @@ def _test_uniform(proposal, nwalkers=32, nsteps=2000, seed=1234):
         (acc < 0.9) * (acc > 0.1)
     ), "Invalid acceptance fraction\n{0}".format(acc)
 
-    # Check that the resulting chain "fails" the K-S test.
-    samps = sampler.get_chain(flat=True)
-    np.random.shuffle(samps)
-    ks, _ = stats.kstest(samps[::100], "uniform")
-    assert ks > 0.1, "The K-S test failed"
+    if stats is not None:
+        # Check that the resulting chain "fails" the K-S test.
+        samps = sampler.get_chain(flat=True)
+        np.random.shuffle(samps)
+        ks, _ = stats.kstest(samps[::100, 0], "uniform")
+        assert ks > 0.1, "The K-S test failed"

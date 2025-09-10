@@ -3,7 +3,7 @@ emcee
 
 **emcee** is an MIT licensed pure-Python implementation of Goodman & Weare's
 `Affine Invariant Markov chain Monte Carlo (MCMC) Ensemble sampler
-<https://msp.berkeley.edu/camcos/2010/5-1/p04.xhtml>`_ and these pages will
+<https://msp.org/camcos/2010/5-1/p04.xhtml>`_ and these pages will
 show you how to use it.
 
 This documentation won't teach you too much about MCMC but there are a lot
@@ -12,22 +12,19 @@ of resources available for that (try `this one
 We also `published a paper <https://arxiv.org/abs/1202.3665>`_ explaining
 the emcee algorithm and implementation in detail.
 
-emcee has been used in :doc:`quite a few projects in the astrophysical literature
-<testimonials>` and it is being actively developed on `GitHub
-<https://github.com/dfm/emcee>`_.
+emcee has been used in quite a few projects in the astrophysical literature and
+it is being actively developed on `GitHub <https://github.com/dfm/emcee>`_.
 
 .. image:: https://img.shields.io/badge/GitHub-dfm%2Femcee-blue.svg?style=flat
     :target: https://github.com/dfm/emcee
-.. image:: https://img.shields.io/travis/dfm/emcee/master.svg?style=flat
-    :target: https://travis-ci.org/dfm/emcee
-.. image:: https://ci.appveyor.com/api/projects/status/p8smxvleh8mrcn6m?svg=true&style=flat
-    :target: https://ci.appveyor.com/project/dfm/emcee
+.. image:: https://github.com/dfm/emcee/workflows/Tests/badge.svg
+    :target: https://github.com/dfm/emcee/actions?query=workflow%3ATests
 .. image:: https://img.shields.io/badge/license-MIT-blue.svg?style=flat
-    :target: https://github.com/dfm/emcee/blob/master/LICENSE
+    :target: https://github.com/dfm/emcee/blob/main/LICENSE
 .. image:: https://img.shields.io/badge/arXiv-1202.3665-orange.svg?style=flat
     :target: https://arxiv.org/abs/1202.3665
-.. image:: https://coveralls.io/repos/github/dfm/emcee/badge.svg?branch=master&style=flat
-    :target: https://coveralls.io/github/dfm/emcee?branch=master
+.. image:: https://coveralls.io/repos/github/dfm/emcee/badge.svg?branch=main&style=flat
+    :target: https://coveralls.io/github/dfm/emcee?branch=main
 
 
 Basic Usage
@@ -67,7 +64,7 @@ should have what you need.
 
 We welcome bug reports, patches, feature requests, and other comments via `the GitHub
 issue tracker <https://github.com/dfm/emcee/issues>`_, but you should check out the
-`contribution guidelines <https://github.com/dfm/emcee/blob/master/CONTRIBUTING.md>`_
+`contribution guidelines <https://github.com/dfm/emcee/blob/main/CONTRIBUTING.md>`_
 first.
 If you have a question about the use of emcee, please post it to `the users list
 <https://groups.google.com/forum/#!forum/emcee-users>`_ instead of the issue tracker.
@@ -101,7 +98,7 @@ If you have a question about the use of emcee, please post it to `the users list
 License & Attribution
 ---------------------
 
-Copyright 2010-2019 Dan Foreman-Mackey and `contributors <https://github.com/dfm/emcee/graphs/contributors>`_.
+Copyright 2010-2021 Dan Foreman-Mackey and `contributors <https://github.com/dfm/emcee/graphs/contributors>`_.
 
 emcee is free software made available under the MIT License. For details
 see the ``LICENSE``.
@@ -109,8 +106,7 @@ see the ``LICENSE``.
 If you make use of emcee in your work, please cite our paper
 (`arXiv <https://arxiv.org/abs/1202.3665>`_,
 `ADS <https://ui.adsabs.harvard.edu/abs/2013PASP..125..306F>`_,
-`BibTeX <https://ui.adsabs.harvard.edu/abs/2013PASP..125..306F/exportcitation>`_)
-and consider adding your paper to the :ref:`testimonials` list.
+`BibTeX <https://ui.adsabs.harvard.edu/abs/2013PASP..125..306F/exportcitation>`_).
 
 
 Changelog

@@ -1,5 +1,9 @@
 # -*- coding: utf-8 -*-
 
+import warnings
+from itertools import count
+from typing import Dict, List, Optional, Union
+
 import numpy as np
 
 from .backends import Backend
@@ -16,6 +20,13 @@ try:
 except ImportError:
     # for py2.7, will be an Exception in 3.8
     from collections import Iterable
+
+try:
+    # Try to import from numpy.exceptions (available in NumPy 1.25 and later)
+    from numpy.exceptions import VisibleDeprecationWarning
+except ImportError:
+    # Fallback to the top-level numpy import (for older versions)
+    from numpy import VisibleDeprecationWarning
 
 
 class EnsembleSampler(object):
@@ -41,10 +52,10 @@ class EnsembleSampler(object):
             (default: :class:`StretchMove`)
         args (Optional): A list of extra positional arguments for
             ``log_prob_fn``. ``log_prob_fn`` will be called with the sequence
-            ``log_pprob_fn(p, *args, **kwargs)``.
+            ``log_prob_fn(p, *args, **kwargs)``.
         kwargs (Optional): A dict of extra keyword arguments for
             ``log_prob_fn``. ``log_prob_fn`` will be called with the sequence
-            ``log_pprob_fn(p, *args, **kwargs)``.
+            ``log_prob_fn(p, *args, **kwargs)``.
         pool (Optional): An object with a ``map`` method that follows the same
             calling sequence as the built-in ``map`` function. This is
             generally used to compute the log-probabilities for the ensemble
@@ -58,6 +69,10 @@ class EnsembleSampler(object):
             to accept a list of position vectors instead of just one. Note
             that ``pool`` will be ignored if this is ``True``.
             (default: ``False``)
+        parameter_names (Optional[Union[List[str], Dict[str, List[int]]]]):
+            names of individual parameters or groups of parameters. If
+            specified, the ``log_prob_fn`` will recieve a dictionary of
+            parameters, rather than a ``np.ndarray``.
 
     """
 
@@ -73,6 +88,7 @@ class EnsembleSampler(object):
         backend=None,
         vectorize=False,
         blobs_dtype=None,
+        parameter_names: Optional[Union[Dict[str, int], List[str]]] = None,
         # Deprecated...
         a=None,
         postargs=None,
@@ -154,6 +170,49 @@ class EnsembleSampler(object):
         # ``args`` and ``kwargs`` pickleable.
         self.log_prob_fn = _FunctionWrapper(log_prob_fn, args, kwargs)
 
+        # Save the parameter names
+        self.params_are_named: bool = parameter_names is not None
+        if self.params_are_named:
+            assert isinstance(parameter_names, (list, dict))
+
+            # Don't support vectorizing yet
+            msg = "named parameters with vectorization unsupported for now"
+            assert not self.vectorize, msg
+
+            # Check for duplicate names
+            dupes = set()
+            uniq = []
+            for name in parameter_names:
+                if name not in dupes:
+                    uniq.append(name)
+                    dupes.add(name)
+            msg = f"duplicate parameters: {dupes}"
+            assert len(uniq) == len(parameter_names), msg
+
+            if isinstance(parameter_names, list):
+                # Check for all named
+                msg = "name all parameters or set `parameter_names` to `None`"
+                assert len(parameter_names) == ndim, msg
+                # Convert a list to a dict
+                parameter_names: Dict[str, int] = {
+                    name: i for i, name in enumerate(parameter_names)
+                }
+
+            # Check not too many names
+            msg = "too many names"
+            assert len(parameter_names) <= ndim, msg
+
+            # Check all indices appear
+            values = [
+                v if isinstance(v, list) else [v]
+                for v in parameter_names.values()
+            ]
+            values = [item for sublist in values for item in sublist]
+            values = set(values)
+            msg = f"not all values appear -- set should be 0 to {ndim-1}"
+            assert values == set(np.arange(ndim)), msg
+            self.parameter_names = parameter_names
+
     @property
     def random_state(self):
         """
@@ -209,6 +268,7 @@ class EnsembleSampler(object):
         thin=None,
         store=True,
         progress=False,
+        progress_kwargs=None,
     ):
         """Advance the chain as a generator
 
@@ -216,7 +276,8 @@ class EnsembleSampler(object):
             initial_state (State or ndarray[nwalkers, ndim]): The initial
                 :class:`State` or positions of the walkers in the
                 parameter space.
-            iterations (Optional[int]): The number of steps to generate.
+            iterations (Optional[int or NoneType]): The number of steps to generate.
+                ``None`` generates an infinite stream (requires ``store=False``).
             tune (Optional[bool]): If ``True``, the parameters of some moves
                 will be automatically tuned.
             thin_by (Optional[int]): If you only want to store and yield every
@@ -234,6 +295,8 @@ class EnsembleSampler(object):
                 ``'notebook'``, which shows a progress bar suitable for
                 Jupyter notebooks.  If ``False``, no progress bar will be
                 shown.
+            progress_kwargs (Optional[dict]): A ``dict`` of keyword arguments
+                to be passed to the tqdm call.
             skip_initial_state_check (Optional[bool]): If ``True``, a check
                 that the initial_state can fully explore the space will be
                 skipped. (default: ``False``)
@@ -243,10 +306,13 @@ class EnsembleSampler(object):
         :class:`State` of the ensemble.
 
         """
+        if iterations is None and store:
+            raise ValueError("'store' must be False when 'iterations' is None")
         # Interpret the input as a walker state and check the dimensions.
         state = State(initial_state, copy=True)
-        if np.shape(state.coords) != (self.nwalkers, self.ndim):
-            raise ValueError("incompatible input dimensions")
+        state_shape = np.shape(state.coords)
+        if state_shape != (self.nwalkers, self.ndim):
+            raise ValueError(f"incompatible input dimensions {state_shape}")
         if (not skip_initial_state_check) and (
             not walkers_independent(state.coords)
         ):
@@ -304,7 +370,6 @@ class EnsembleSampler(object):
 
             yield_step = 1
             checkpoint_step = thin
-            iterations = int(iterations)
             if store:
                 nsaves = iterations // checkpoint_step
                 self.backend.grow(nsaves, state.blobs)
@@ -317,7 +382,6 @@ class EnsembleSampler(object):
 
             yield_step = thin_by
             checkpoint_step = thin_by
-            iterations = int(iterations)
             if store:
                 self.backend.grow(iterations, state.blobs)
 
@@ -329,12 +393,14 @@ class EnsembleSampler(object):
         model = Model(
             self.log_prob_fn, self.compute_log_prob, map_fn, self._random
         )
+        if progress_kwargs is None:
+            progress_kwargs = {}
 
         # Inject the progress bar
-        total = iterations * yield_step
-        with get_progress_bar(progress, total) as pbar:
+        total = None if iterations is None else iterations * yield_step
+        with get_progress_bar(progress, total, **progress_kwargs) as pbar:
             i = 0
-            for _ in range(iterations):
+            for _ in count() if iterations is None else range(iterations):
                 for _ in range(yield_step):
                     # Choose a random move
                     move = self._random.choice(self._moves, p=self._weights)
@@ -412,6 +478,10 @@ class EnsembleSampler(object):
         if np.any(np.isnan(p)):
             raise ValueError("At least one parameter value was NaN")
 
+        # If the parmaeters are named, then switch to dictionaries
+        if self.params_are_named:
+            p = ndarray_to_list_of_dicts(p, self.parameter_names)
+
         # Run the log-probability calculations (optionally in parallel).
         if self.vectorize:
             results = self.log_prob_fn(p)
@@ -423,15 +493,22 @@ class EnsembleSampler(object):
                 map_func = self.pool.map
             else:
                 map_func = map
-            results = list(
-                map_func(self.log_prob_fn, (p[i] for i in range(len(p))))
-            )
+            results = list(map_func(self.log_prob_fn, p))
 
         try:
-            log_prob = np.array([float(l[0]) for l in results])
-            blob = [l[1:] for l in results]
+            # perhaps log_prob_fn returns blobs?
+
+            # deal with the blobs first
+            # if l does not have a len attribute (i.e. not a sequence, no blob)
+            # then a TypeError is raised. However, no error will be raised if
+            # l is a length-1 array, np.array([1.234]). In that case blob
+            # will become an empty list.
+            blob = [l[1:] for l in results if len(l) > 1]
+            if not len(blob):
+                raise IndexError
+            log_prob = np.array([_scalar(l[0]) for l in results])
         except (IndexError, TypeError):
-            log_prob = np.array([float(l) for l in results])
+            log_prob = np.array([_scalar(l) for l in results])
             blob = None
         else:
             # Get the blobs dtype
@@ -439,8 +516,26 @@ class EnsembleSampler(object):
                 dt = self.blobs_dtype
             else:
                 try:
-                    dt = np.atleast_1d(blob[0]).dtype
+                    with warnings.catch_warnings(record=True):
+                        warnings.simplefilter(
+                            "error", VisibleDeprecationWarning
+                        )
+                        try:
+                            dt = np.atleast_1d(blob[0]).dtype
+                        except Warning:
+                            deprecation_warning(
+                                "You have provided blobs that are not all the "
+                                "same shape or size. This means they must be "
+                                "placed in an object array. Numpy has "
+                                "deprecated this automatic detection, so "
+                                "please specify "
+                                "blobs_dtype=np.dtype('object')"
+                            )
+                            dt = np.dtype("object")
                 except ValueError:
+                    dt = np.dtype("object")
+                if dt.kind in "US":
+                    # Strings need to be object arrays or we risk truncation
                     dt = np.dtype("object")
             blob = np.array(blob, dtype=dt)
 
@@ -537,8 +632,8 @@ class _FunctionWrapper(object):
 
     def __init__(self, f, args, kwargs):
         self.f = f
-        self.args = [] if args is None else args
-        self.kwargs = {} if kwargs is None else kwargs
+        self.args = args or []
+        self.kwargs = kwargs or {}
 
     def __call__(self, x):
         try:
@@ -563,7 +658,7 @@ def walkers_independent(coords):
     if np.any(C_colmax == 0):
         return False
     C /= C_colmax
-    C_colsum = np.sqrt(np.sum(C ** 2, axis=0))
+    C_colsum = np.sqrt(np.sum(C**2, axis=0))
     C /= C_colsum
     return np.linalg.cond(C.astype(float)) <= 1e8
 
@@ -576,12 +671,43 @@ def walkers_independent_cov(coords):
 
 
 def _scaled_cond(a):
-    asum = np.sqrt((a ** 2).sum(axis=0))[None, :]
+    asum = np.sqrt((a**2).sum(axis=0))[None, :]
     if np.any(asum == 0):
         return np.inf
     b = a / asum
-    bsum = np.sqrt((b ** 2).sum(axis=1))[:, None]
+    bsum = np.sqrt((b**2).sum(axis=1))[:, None]
     if np.any(bsum == 0):
         return np.inf
     c = b / bsum
     return np.linalg.cond(c.astype(float))
+
+
+def ndarray_to_list_of_dicts(
+    x: np.ndarray, key_map: Dict[str, Union[int, List[int]]]
+) -> List[Dict[str, Union[np.number, np.ndarray]]]:
+    """
+    A helper function to convert a ``np.ndarray`` into a list
+    of dictionaries of parameters. Used when parameters are named.
+
+    Args:
+      x (np.ndarray): parameter array of shape ``(N, n_dim)``, where
+        ``N`` is an integer
+      key_map (Dict[str, Union[int, List[int]]):
+
+    Returns:
+      list of dictionaries of parameters
+    """
+    return [{key: xi[val] for key, val in key_map.items()} for xi in x]
+
+
+def _scalar(fx):
+    # Make sure a value is a true scalar
+    # 1.0, np.float64(1.0), np.array([1.0]), np.array(1.0)
+    if not np.isscalar(fx):
+        try:
+            fx = np.asarray(fx).item()
+        except (TypeError, ValueError) as e:
+            raise ValueError("log_prob_fn should return scalar") from e
+        return float(fx)
+    else:
+        return float(fx)

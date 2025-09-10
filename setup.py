@@ -23,6 +23,15 @@ CLASSIFIERS = [
     "Programming Language :: Python",
 ]
 INSTALL_REQUIRES = ["numpy"]
+SETUP_REQUIRES = [
+    "setuptools>=40.6.0",
+    "setuptools_scm",
+    "wheel",
+]
+EXTRA_REQUIRE = {
+    "extras": ["h5py", "scipy"],
+    "tests": ["pytest", "pytest-cov", "coverage[toml]"],
+}
 
 # END PROJECT SPECIFIC
 
@@ -58,6 +67,9 @@ if __name__ == "__main__":
         maintainer=find_meta("author"),
         maintainer_email=find_meta("email"),
         url=find_meta("uri"),
+        project_urls={
+            "Source": "https://github.com/dfm/emcee",
+        },
         license=find_meta("license"),
         description=find_meta("description"),
         long_description=read("README.rst"),
@@ -66,6 +78,8 @@ if __name__ == "__main__":
         package_dir={"": "src"},
         include_package_data=True,
         install_requires=INSTALL_REQUIRES,
+        setup_requires=SETUP_REQUIRES,
+        extras_require=EXTRA_REQUIRE,
         classifiers=CLASSIFIERS,
         zip_safe=False,
         options={"bdist_wheel": {"universal": "1"}},

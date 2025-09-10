@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 
 import pickle
-from itertools import product
+from itertools import islice, product
 
 import numpy as np
 import pytest
@@ -14,7 +14,7 @@ all_backends = backends.get_test_backends()
 
 
 def normal_log_prob(params):
-    return -0.5 * np.sum(params ** 2)
+    return -0.5 * np.sum(params**2)
 
 
 @pytest.mark.parametrize(
@@ -211,7 +211,7 @@ def test_restart(backend):
 
 def test_vectorize():
     def lp_vec(p):
-        return -0.5 * np.sum(p ** 2, axis=1)
+        return -0.5 * np.sum(p**2, axis=1)
 
     np.random.seed(42)
     nwalkers, ndim = 32, 3
@@ -319,3 +319,28 @@ def test_walkers_independent_randn_offset_longdouble(nwalkers, ndim, offset):
         np.random.randn(nwalkers, ndim)
         + np.ones((nwalkers, ndim), dtype=np.longdouble) * offset
     )
+
+
+@pytest.mark.parametrize("backend", all_backends)
+def test_infinite_iterations_store(backend, nwalkers=32, ndim=3):
+    with backend() as be:
+        coords = np.random.randn(nwalkers, ndim)
+        with pytest.raises(ValueError):
+            next(
+                EnsembleSampler(
+                    nwalkers, ndim, normal_log_prob, backend=be
+                ).sample(coords, iterations=None, store=True)
+            )
+
+
+@pytest.mark.parametrize("backend", all_backends)
+def test_infinite_iterations(backend, nwalkers=32, ndim=3):
+    with backend() as be:
+        coords = np.random.randn(nwalkers, ndim)
+        for state in islice(
+            EnsembleSampler(
+                nwalkers, ndim, normal_log_prob, backend=be
+            ).sample(coords, iterations=None, store=False),
+            10,
+        ):
+            pass

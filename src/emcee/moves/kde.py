@@ -30,7 +30,7 @@ class KDEMove(RedBlueMove):
     def __init__(self, bw_method=None, **kwargs):
         if gaussian_kde is None:
             raise ImportError(
-                "you need scipy.stats.gaussian_kde to use the " "KDEMove"
+                "you need scipy.stats.gaussian_kde to use the KDEMove"
             )
         self.bw_method = bw_method
         super(KDEMove, self).__init__(**kwargs)
@@ -38,6 +38,6 @@ class KDEMove(RedBlueMove):
     def get_proposal(self, s, c, random):
         c = np.concatenate(c, axis=0)
         kde = gaussian_kde(c.T, bw_method=self.bw_method)
-        q = kde.resample(len(s))
+        q = kde.resample(len(s), random)
         factor = kde.logpdf(s.T) - kde.logpdf(q)
         return q.T, factor
